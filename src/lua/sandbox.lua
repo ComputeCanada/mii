@@ -82,12 +82,13 @@ setmetatable(test_env, meta_table)
 
 local function run5_1(untrusted_code)
     paths = {}
+    modulepaths = {}
     if untrusted_code:byte(1) == 27 then error("binary bytecode prohibited") end
     local untrusted_function, message = loadstring(untrusted_code)
     if not untrusted_function then error(message) end
     setfenv(untrusted_function, test_env)
     untrusted_function()
-    return paths
+    return paths, modulepaths
 end
 
 --------------------------------------------------------------------------
@@ -97,10 +98,11 @@ end
 -- @param untrusted_code A string containing lua code
 local function run5_2(untrusted_code)
     paths = {}
+    modulepaths = {}
     local untrusted_function, message = load(untrusted_code, nil, 't', test_env)
     if not untrusted_function then error(message) end
     untrusted_function()
-    return paths
+    return paths, modulepaths
 end
 
 --------------------------------------------------------------------------

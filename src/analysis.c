@@ -42,7 +42,8 @@ static regex_t _mii_analysis_lmod_regex;
 static lua_State *lua_state;
 
 /* run lua module code in a sandbox */
-int _mii_analysis_lua_run(lua_State* lua_state, const char* code, char*** paths_out, int* num_paths_out);
+int _mii_analysis_lua_run(lua_State* lua_state, const char* code);
+int _mii_analysis_get_paths(lua_State* lua_state, char*** paths_out, int* num_paths_out);
 #endif
 
 /* word expansion functions */
@@ -130,12 +131,12 @@ int mii_analysis_run(const char* modfile, int modtype, char*** bins_out, int* nu
 /*
  * run a modulefile's code in a Lua sandbox
  */
-int _mii_analysis_lua_run(lua_State* lua_state, const char* code, char*** paths_out, int* num_paths_out) {
+int _mii_analysis_lua_run(lua_State* lua_state, const char* code) {
     /* execute modulefile */
     int res;
     lua_getglobal(lua_state, "sandbox_run");
     lua_pushstring(lua_state, code);
-    res = lua_pcall(lua_state, 1, 1, 0);
+    res = lua_pcall(lua_state, 1, 2, 0);
 
     if(res != LUA_OK) {
         mii_error("Error occured in Lua sandbox : %s", lua_tostring(lua_state, -1));
@@ -143,9 +144,13 @@ int _mii_analysis_lua_run(lua_State* lua_state, const char* code, char*** paths_
         return -1;
     }
 
-    luaL_checktype(lua_state, 1, LUA_TTABLE);
+    return 0;
+}
 
+/* retrieve paths from the Lua state */
+int _mii_analysis_get_paths(lua_State* lua_state, char*** paths_out, int* num_paths_out) {
     /* allocate memory for the paths */
+    luaL_checktype(lua_state, -1, LUA_TTABLE);
     *num_paths_out = mii_lua_len(lua_state, -1);
     *paths_out = malloc(*num_paths_out * sizeof(char*));
 
@@ -203,21 +208,29 @@ int _mii_analysis_lmod(const char* path, char*** bins_out, int* num_bins_out) {
         fclose(f); f = NULL;
         buffer[s] = '\0';
 
-        /* get binaries paths */
-        char** bin_paths;
-        int num_paths;
-        if(_mii_analysis_lua_run(lua_state, buffer, &bin_paths, &num_paths)) {
+        if(_mii_analysis_lua_run(lua_state, buffer)) {
             mii_error("Error occured when executing %s, skipping", path);
             free(buffer);
             return -1;
         }
 
-        /* scan every path returned */
+        int num_paths;
+
+        char** modulepaths;
+        _mii_analysis_get_paths(lua_state, &modulepaths, &num_paths);
+        for (int i = 0; i < num_paths; ++i) {
+            // printf("%s\n", modulepaths[i]);
+            free(modulepaths[i]);
+        }
+        free(modulepaths);
+
+        /* get binaries paths */
+        char** bin_paths;
+        _mii_analysis_get_paths(lua_state, &bin_paths, &num_paths);
         for(int i = 0; i < num_paths; ++i) {
             _mii_analysis_scan_path(bin_paths[i], bins_out, num_bins_out);
             free(bin_paths[i]);
         }
-
         free(bin_paths);
         free(buffer);
     }

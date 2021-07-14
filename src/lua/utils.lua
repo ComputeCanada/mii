@@ -205,5 +205,7 @@ function handle_path(...)
    local t = convert2table(...)
    if t[1] == "PATH" then
       paths[#paths+1] = t[2]
+   elseif t[1] == "MODULEPATH" then
+      modulepaths[#modulepaths+1] = t[2]
    end
 end
