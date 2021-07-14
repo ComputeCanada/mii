@@ -50,7 +50,7 @@ int _mii_analysis_get_paths(lua_State* lua_state, char*** paths_out, int* num_pa
 char* _mii_analysis_expand(const char* expr);
 
 /* module type analysis functions */
-int _mii_analysis_lmod(const char* path, char*** bins_out, int* num_bins_out);
+int _mii_analysis_lmod(const char* path, char*** bins_out, int* num_bins_out, char*** modpaths_out, int* num_modpaths_out);
 int _mii_analysis_tcl(const char* path, char*** bins_out, int* num_bins_out);
 
 /* path scanning functions */
@@ -116,10 +116,10 @@ void mii_analysis_free() {
 /*
  * run analysis for an arbitrary module
  */
-int mii_analysis_run(const char* modfile, int modtype, char*** bins_out, int* num_bins_out) {
+int mii_analysis_run(const char* modfile, int modtype, char*** bins_out, int* num_bins_out, char*** modpaths_out, int* num_modpaths_out) {
     switch (modtype) {
     case MII_MODTABLE_MODTYPE_LMOD:
-        return _mii_analysis_lmod(modfile, bins_out, num_bins_out);
+        return _mii_analysis_lmod(modfile, bins_out, num_bins_out, modpaths_out, num_modpaths_out);
     case MII_MODTABLE_MODTYPE_TCL:
         return _mii_analysis_tcl(modfile, bins_out, num_bins_out);
     }
@@ -170,7 +170,7 @@ int _mii_analysis_get_paths(lua_State* lua_state, char*** paths_out, int* num_pa
 /*
  * extract paths from an lmod file
  */
-int _mii_analysis_lmod(const char* path, char*** bins_out, int* num_bins_out) {
+int _mii_analysis_lmod(const char* path, char*** bins_out, int* num_bins_out, char*** modpaths_out, int* num_modpaths_out) {
     FILE* f = fopen(path, "r");
 
     if (!f) {
@@ -214,17 +214,15 @@ int _mii_analysis_lmod(const char* path, char*** bins_out, int* num_bins_out) {
             return -1;
         }
 
-        int num_paths;
-
-        char** modulepaths;
-        _mii_analysis_get_paths(lua_state, &modulepaths, &num_paths);
-        for (int i = 0; i < num_paths; ++i) {
-            // printf("%s\n", modulepaths[i]);
-            free(modulepaths[i]);
-        }
-        free(modulepaths);
+        _mii_analysis_get_paths(lua_state, modpaths_out, num_modpaths_out);
+        // for (int i = 0; i < *num_modpaths_out; ++i) {
+        //     // printf("%s\n", modulepaths[i]);
+        //     // free(modulepaths[i]);
+        // }
+        // free(modulepaths);
 
         /* get binaries paths */
+        int num_paths;
         char** bin_paths;
         _mii_analysis_get_paths(lua_state, &bin_paths, &num_paths);
         for(int i = 0; i < num_paths; ++i) {

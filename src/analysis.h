@@ -12,6 +12,6 @@
 int mii_analysis_init();
 void mii_analysis_free();
 
-int mii_analysis_run(const char* modfile, int modtype, char*** bins_out, int* num_bins_out);
+int mii_analysis_run(const char* modfile, int modtype, char*** bins_out, int* num_bins_out, char*** modpaths_out, int* num_modpaths_out);
 
 #endif

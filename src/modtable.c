@@ -29,8 +29,8 @@ int _mii_modtable_parse_handler_import(mii_modtable* p, char* path, char* code, 
 int _mii_modtable_parse_handler_preanalysis(mii_modtable* p, char* path, char* code, char** bins, int num_bins, time_t timestamp);
 
 /* mii_modtable generation */
-int _mii_modtable_gen_recursive(mii_modtable* p, const char* root);
-int _mii_modtable_gen_recursive_sub(mii_modtable* p, const char* root, const char* prefix);
+int _mii_modtable_gen_recursive(mii_modtable* p, const char* root, mii_modtable_entry* parent);
+int _mii_modtable_gen_recursive_sub(mii_modtable* p, const char* root, const char* prefix, mii_modtable_entry* parent);
 
 /* initialize an empty mii_modtable */
 void mii_modtable_init(mii_modtable* out) {
@@ -68,6 +68,40 @@ void mii_modtable_free(mii_modtable* p) {
     memset(p, 0, sizeof *p);
 }
 
+int mii_modtable_add(mii_modtable* p, char* path, mii_modtable_entry* parent) {
+    int len = strlen(path);
+
+    /* do nothing if path is empty */
+    if (!path || !len) {
+        mii_error("Empty or blank path! Will not add to the module table.");
+        return -1;
+    }
+
+    if (p->modulepath == NULL) {
+        p->modulepath = mii_strdup(path);
+    } else {
+        /* copy current modulepath */
+        char* modulepath = strdup(p->modulepath);
+        free(p->modulepath);
+
+        /* append new path to modulepath */
+        p->modulepath = malloc(len + strlen(modulepath) + 2);
+        sprintf(p->modulepath, "%s:%s", modulepath, path);
+        free(modulepath);
+    }
+
+    /* find new modules in path */
+    int initial_num_modules = p->num_modules;
+    _mii_modtable_gen_recursive(p, path, parent);
+
+    mii_debug("Found %d modules in %s", p->num_modules - initial_num_modules, path);
+
+    /* mark them for analysis */
+    p->modules_requiring_analysis = p->num_modules - initial_num_modules;
+
+    return 0;
+}
+
 /*
  * fill a mii_modtable with modules from the disk
  * will fail if the mii_modtable is not empty
@@ -78,22 +112,24 @@ int mii_modtable_gen(mii_modtable* p, char* modulepath) {
         return -1;
     }
 
-    if (!modulepath || !strlen(modulepath)) {
-        mii_error("Empty or blank MODULEPATH! Will not generate module table.");
-        return -1;
-    }
+    // if (!modulepath || !strlen(modulepath)) {
+    //     mii_error("Empty or blank MODULEPATH! Will not generate module table.");
+    //     return -1;
+    // }
 
-    p->modulepath = mii_strdup(modulepath);
+    // p->modulepath = mii_strdup(modulepath);
 
     /* split modulepath into roots, recursively crawl each */
-    for (char* root = strtok(p->modulepath, ":"); root; root = strtok(NULL, ":")) {
-        _mii_modtable_gen_recursive(p, root);
+    for (char* root = strtok(modulepath, ":"); root; root = strtok(NULL, ":")) {
+        mii_modtable_add(p, root, NULL);
     }
 
-    mii_debug("Found %d modules", p->num_modules);
+    // printf("MODULEPATH = %s\n", p->modulepath);
+
+    mii_debug("Found a total of %d modules", p->num_modules);
 
     /* after gen, every module requires analysis */
-    p->modules_requiring_analysis = p->num_modules;
+    // p->modules_requiring_analysis = p->num_modules;
 
     return 0;
 }
@@ -126,6 +162,8 @@ int mii_modtable_preanalysis(mii_modtable* p, const char* path) {
 int mii_modtable_analysis(mii_modtable* p, int* num) {
     mii_modtable_entry* cur;
     int count = 0;
+    char** mod_paths = NULL;
+    int num_mod_paths;
 
     if (!p->modules_requiring_analysis) {
         p->analysis_complete = 1;
@@ -140,8 +178,23 @@ int mii_modtable_analysis(mii_modtable* p, int* num) {
             if (!cur->analysis_complete) {
                 /* need to perform analysis on this module */
 
-                if (!mii_analysis_run(cur->path, cur->type, &cur->bins, &cur->num_bins)) {
+                num_mod_paths = 0;
+
+                if (!mii_analysis_run(cur->path, cur->type, &cur->bins, &cur->num_bins, &mod_paths, &num_mod_paths)) {
                     mii_debug("analysis for %s : %d bins", cur->path, cur->num_bins);
+
+                    // printf("num_mod_paths = %d\n", num_mod_paths);
+
+                    for (int i = 0; i < num_mod_paths; ++i) {
+                        mii_modtable_add(p, mod_paths[i], cur);
+                        printf("path = %s\n", mod_paths[i]);
+                        free(mod_paths[i]);
+                    }
+
+                    /* memory only allocated during Lmod analysis */
+                    if(cur->type == MII_MODTABLE_MODTYPE_LMOD)
+                        free(mod_paths);
+                    // free(mod_paths);
 
                     cur->analysis_complete = 1;
                     ++count;
@@ -313,15 +366,15 @@ int mii_modtable_search_info(mii_modtable* p, const char* code, mii_search_resul
 /*
  * recursively walk a root and add modules to the hashtable
  */
-int _mii_modtable_gen_recursive(mii_modtable* p, const char* root) {
-    return _mii_modtable_gen_recursive_sub(p, root, NULL);
+int _mii_modtable_gen_recursive(mii_modtable* p, const char* root, mii_modtable_entry* parent) {
+    return _mii_modtable_gen_recursive_sub(p, root, NULL, parent);
 }
 
 /*
  * subroutine for _mii_modtable_gen_recursive which allows for recursively
  * computing the module relative paths (and the loading codes)
  */
-int _mii_modtable_gen_recursive_sub(mii_modtable* p, const char* root, const char* prefix) {
+int _mii_modtable_gen_recursive_sub(mii_modtable* p, const char* root, const char* prefix, mii_modtable_entry* parent) {
     char* dir_path = mii_join_path(root, prefix);
     DIR* d = opendir(dir_path);
 
@@ -374,6 +427,7 @@ int _mii_modtable_gen_recursive_sub(mii_modtable* p, const char* root, const cha
             new_module->bins = NULL;
             new_module->num_bins = 0;
             new_module->analysis_complete = 0;
+            new_module->parent = parent;
 
             int target_index = _mii_modtable_get_target_index(abs_path);
 
@@ -389,7 +443,7 @@ int _mii_modtable_gen_recursive_sub(mii_modtable* p, const char* root, const cha
 
         /* add if module, recurse if directory */
         if (S_ISDIR(st.st_mode)) {
-            result |= _mii_modtable_gen_recursive_sub(p, root, rel_path);
+            result |= _mii_modtable_gen_recursive_sub(p, root, rel_path, parent);
         }
 
         /*
@@ -551,7 +605,7 @@ int _mii_modtable_parse_handler_preanalysis(mii_modtable* p, char* path, char* c
 
     mii_modtable_entry* mod = _mii_modtable_locate_entry(p, path);
 
-    if (mod && (mod->timestamp <= timestamp)) {
+    if (mod && (mod->timestamp <= timestamp) && (mod->analysis_complete == 0)) {
         /* found a matching module, and the timestamp in the db is up to date.
          * pass over the bins */
 

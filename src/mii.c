@@ -110,8 +110,50 @@ int mii_build() {
         return -1;
     }
 
+    mii_modtable_entry* cur = *index.buf;
+    while(cur) {
+        if (cur->parent != NULL) {
+            printf("found %s\n", cur->code);
+            printf("parent is %s\n", cur->parent->code);
+        }
+        cur = cur->next;
+    }
+
     /* cleanup */
     mii_modtable_free(&index);
+    mii_analysis_free();
+
+    return 0;
+}
+
+int mii_walk_path(mii_modtable* index, mii_modtable_entry parent) {
+    /* initialize analysis regular expressions */
+    if (mii_analysis_init()) {
+        mii_error("Unexpected failure initializing analysis functions!");
+        return -1;
+    }
+
+    /* generate a partial index from the disk */
+    if (mii_modtable_gen(index, _mii_modulepath)) {
+        mii_error("Error occurred during index generation, terminating!");
+        return -1;
+    }
+
+    /* try and import up-to-date modules from the cache */
+    if (mii_modtable_preanalysis(index, _mii_datafile)) {
+        mii_warn("Error occurred during index preanalysis, will rebuild the whole cache!");
+    }
+
+    /* perform analysis over any remaining modules */
+    int count;
+
+    if (mii_modtable_analysis(index, &count)) {
+        mii_error("Error occurred during index analysis, terminating!");
+        return -1;
+    }
+
+    /* cleanup */
+    mii_modtable_free(index);
     mii_analysis_free();
 
     return 0;

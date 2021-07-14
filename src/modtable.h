@@ -28,6 +28,7 @@ typedef struct _mii_modtable_entry {
     time_t timestamp;
     int analysis_complete; /* truthy if the bin list is confirmed to be complete */
     struct _mii_modtable_entry* next;
+    struct _mii_modtable_entry* parent;
 } mii_modtable_entry;
 
 typedef struct _mii_modtable {
@@ -39,6 +40,7 @@ typedef struct _mii_modtable {
 void mii_modtable_init(mii_modtable* p);
 void mii_modtable_free(mii_modtable* p);
 
+int mii_modtable_add(mii_modtable* p, char* path, mii_modtable_entry* parent); /* add a path to the current modulepath and do a partial scan */
 int mii_modtable_gen(mii_modtable* p, char* modulepath); /* scan for modules and build a partial table */
 int mii_modtable_import(mii_modtable* p, const char* path); /* import an existing table from the disk */
 
